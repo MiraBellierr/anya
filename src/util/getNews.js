@@ -34,10 +34,15 @@ async function getAnimeNews(client) {
 		const { data: data2 } = await axios.get(link);
 
 		const $2 = cheerio.load(data2);
+		let video;
 
-		const video = $2(
-			".meat > p:nth-child(2) > span:nth-child(1) > span:nth-child(1) > iframe:nth-child(1)"
-		).attr().src;
+		try {
+			video = $2(
+				".meat > p:nth-child(2) > span:nth-child(1) > span:nth-child(1) > iframe:nth-child(1)"
+			).attr().src;
+		} catch {
+			video = null;
+		}
 
 		const animeNews = {
 			title,
