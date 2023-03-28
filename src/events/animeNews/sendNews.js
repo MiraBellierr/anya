@@ -20,10 +20,14 @@ module.exports = async (client, news) => {
 		embeds: [embed],
 	});
 
-	if (m.type === Discord.ChannelType.GuildAnnouncement) m.crosspost();
+	if (channel.type === Discord.ChannelType.GuildAnnouncement) m.crosspost();
 
-	if (news.video) {
-		const m2 = await channel.send(news.video);
-		if (m2.type === Discord.ChannelType.GuildAnnouncement) m2.crosspost();
+	if (news.videos.length > 0) {
+		news.videos.forEach(async (video) => {
+			const m2 = await channel.send(video);
+
+			if (channel.type === Discord.ChannelType.GuildAnnouncement)
+				m2.crosspost();
+		});
 	}
 };
