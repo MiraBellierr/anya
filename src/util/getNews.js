@@ -1,91 +1,74 @@
 const cheerio = require("cheerio");
-const fs = require("fs");
 const axios = require("axios");
 const baseUrl = "https://www.animenewsnetwork.com";
 
-async function getAnimeNews(client) {
+async function getAnimeNews(client, db) {
 	const { data } = await axios.get(baseUrl);
 
 	try {
 		const $ = cheerio.load(data);
 
-		const title = $(
-			"div.mainfeed-day:nth-child(3) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > div:nth-child(1) > h3:nth-child(1) > a:nth-child(1)"
-		).text();
+		const firstNews = $(".mainfeed-day")
+			.first()
+			.children(".mainfeed-section")
+			.children(".news")
+			.first()
+			.html();
 
-		const image = $(
-			"div.mainfeed-day:nth-child(3) > div:nth-child(2) > div:nth-child(1) > div:nth-child(2)"
-		).attr()["data-src"];
+		const $$ = cheerio.load(firstNews);
 
-		const description = $(
-			"div.mainfeed-day:nth-child(3) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > div:nth-child(1) > div:nth-child(3) > span:nth-child(2)"
-		).text();
+		const thumbnail = baseUrl + $$(".thumbnail").attr()["data-src"];
+		const title = $$(".wrap > div > h3 > a").text();
+		const date = $$(".wrap > div > .byline > time").attr().datetime;
+		const description =
+			$$(".wrap > div > .preview > .intro").text() +
+			" " +
+			$$(".wrap > div > .preview > .full").text();
+		const link = baseUrl + $$(".wrap > div > h3 > a").attr().href;
 
-		const time = $(
-			"div.news:nth-child(2) > div:nth-child(3) > div:nth-child(1) > div:nth-child(2) > time:nth-child(1)"
-		).attr().datetime;
+		const data2 = await axios.get(link);
 
-		const link = `${baseUrl}${
-			$(
-				"div.mainfeed-day:nth-child(3) > div:nth-child(2) > div:nth-child(1) > div:nth-child(2) > a:nth-child(2)"
-			).attr().href
-		}`;
+		const newsRawData = data2.data;
 
-		const { data: data2 } = await axios.get(link);
+		const $$$ = cheerio.load(newsRawData);
 
-		const $2 = cheerio.load(data2);
-		const videos = [];
+		let video = $$$("iframe").length;
 
-		try {
-			$2("span > iframe")
-				.toArray()
-				.forEach((e) => {
-					const src = $2(e).attr().src;
-
-					videos.push(src);
-				});
-		} catch {
-			null;
+		if (video === 1) {
+			video = $$$("iframe").attr().src;
+		} else if (video > 1) {
+			video = $$$("iframe").first().attr().src;
+		} else {
+			video = "";
 		}
 
-		const animeNews = {
+		const id = $(".mainfeed-day")
+			.first()
+			.children(".mainfeed-section")
+			.children(".news")
+			.first()
+			.attr()["data-topics"];
+
+		const newsData = {
+			id,
+			thumbnail,
 			title,
-			image: `${baseUrl}${image}`,
+			date,
 			description,
-			time,
-			videos,
 			link,
+			video,
 		};
 
-		if (!title || !description || !image || !link || !time) {
-			return console.log("Couldn't retrieve latest Anime news...");
-		}
+		try {
+			const oldId = await db.getData("/news/id");
 
-		let previousAnimeNews = fs.readFileSync(
-			"./src/database/json/news.json",
-			"utf8",
-			(err, data) => {
-				if (err) console.log(err);
-
-				return data;
+			if (newsData.id !== oldId) {
+				await db.push("/news", newsData);
+				client.emit("animeNews", newsData);
 			}
-		);
-
-		previousAnimeNews = JSON.parse(previousAnimeNews);
-
-		if (!previousAnimeNews.title) previousAnimeNews.title = null;
-
-		if (animeNews.title !== previousAnimeNews.title) {
-			console.log("Posting the latest Anime News...");
-			fs.writeFile(
-				"./src/database/json/news.json",
-				JSON.stringify(animeNews),
-				(err) => {
-					if (err) console.log(err);
-				}
-			);
-
-			client.emit("animeNews", animeNews);
+		} catch {
+			await db.push("/news", newsData);
+			client.emit("animeNews", newsData);
 		}
 	} catch (e) {
 		console.log(e);
